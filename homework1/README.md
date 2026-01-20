@@ -40,7 +40,7 @@ Install dependencies using pip:
     ```bash
     python -m venv .hw1
     ```
-2. Install dependencies:
+3. Install dependencies:
     ```bash
     source .hw1/bin/activate (Linux/MacOS) or .\.hw1\Scripts\activate (Windows-PowerShell)
     pip install -r requirements.txt
