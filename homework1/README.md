@@ -33,7 +33,7 @@ Install dependencies using pip:
 
 1. **Clone** this repo:
    ```bash
-   git clone git@github.com:brown-ml-in-health-biology/homeworks-s26.git
+   git clone git@github.com:brown-csci1851/stencil.git
    cd homeworks-s26/homework1
    ```
 2. Create virtual environment:
