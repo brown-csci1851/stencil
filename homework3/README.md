@@ -58,7 +58,7 @@ After creating and activating the virtual environment, select it as the Jupyter 
 
 ## Tasks
 
-You will complete the following:
+You will complete the following and include them in your reflection:
 
 - [ ] Load both datasets using `HW3DataLoader`.
 - [ ] Inspect the datasets (shapes, missing values, feature distributions, class balance).
@@ -68,7 +68,7 @@ You will complete the following:
   - [ ] Linear kernel
   - [ ] Polynomial kernel (tune degree)
   - [ ] RBF kernel (tune γ)
-- [ ] Evaluate classification using **more than one metric**:
+- [ ] Evaluate classification using metrics such as:
   - [ ] Accuracy, F1
   - [ ] ROC-AUC or PR-AUC
   - [ ] Confusion matrix + ROC/PR curve
