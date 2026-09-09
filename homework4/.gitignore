@@ -5,6 +5,8 @@ env/
 .venv/
 .hw4/
 
+.DS_Store
+
 # Python
 __pycache__/
 *.py[cod]

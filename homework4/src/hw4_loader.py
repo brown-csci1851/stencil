@@ -1,122 +1,116 @@
 """
-Data loader for Homework 4: CNNs vs FCNs
+Data loader for Homework 4: RNA family classification with FCNs and 1D CNNs.
 
-Assumes the dataset is already present under:
-homework4/data/chest_xray/{train,val,test}/{NORMAL,PNEUMONIA}/*.jpeg
+Expected data layout:
+data/
+  train.csv
+  val.csv
+  test.csv
 
-Example structure:
-data/chest_xray/
-  train/
-    NORMAL/
-    PNEUMONIA/
-  val/
-    NORMAL/
-    PNEUMONIA/
-  test/
-    NORMAL/
-    PNEUMONIA/
+Each CSV must contain:
+sequence,sequence_length,label,label_idx
 """
 
-from typing import Tuple, List
 from pathlib import Path
-from PIL import Image
+from typing import Dict, List, Tuple
 
+import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms as T
+from torch.utils.data import DataLoader, Dataset
 
 
-class ChestXRayDataset(Dataset):
-    def __init__(self, split_dir: Path, transform=None):
-        """
-        Args:
-            split_dir: Path like data/chest_xray/train
-            transform: torchvision transform pipeline
-        """
-        self.split_dir = split_dir
-        self.transform = transform
+class RNADataset(Dataset):
+    """
+    PyTorch dataset for fixed-length one-hot encoded RNA sequences.
 
-        self.class_to_idx = {
-            "NORMAL": 0,
-            "PNEUMONIA": 1,
+    CNN examples are returned with shape (5, max_length), where channels are
+    A, C, G, U, and N. FCN examples are flattened to shape (5 * max_length,).
+    """
+
+    channels = ("A", "C", "G", "U", "N")
+
+    def __init__(
+        self,
+        csv_path: Path,
+        max_length: int = 500,
+        for_cnn: bool = True,
+    ):
+        if not csv_path.exists():
+            raise FileNotFoundError(f"Expected CSV file not found: {csv_path}")
+        if max_length <= 0:
+            raise ValueError("max_length must be positive")
+
+        self.csv_path = csv_path
+        self.max_length = max_length
+        self.for_cnn = for_cnn
+        self.data = pd.read_csv(csv_path)
+
+        required_columns = {"sequence", "sequence_length", "label", "label_idx"}
+        missing_columns = required_columns - set(self.data.columns)
+        if missing_columns:
+            raise ValueError(
+                f"{csv_path} is missing required columns: {sorted(missing_columns)}"
+            )
+
+        self.label_to_idx: Dict[str, int] = (
+            self.data[["label", "label_idx"]]
+            .drop_duplicates()
+            .sort_values("label_idx")
+            .set_index("label")["label_idx"]
+            .to_dict()
+        )
+        self.idx_to_label: Dict[int, str] = {
+            idx: label for label, idx in self.label_to_idx.items()
         }
 
-        self.samples: List[Tuple[Path, int]] = []
-        self._index_images()
+    def __len__(self) -> int:
+        return len(self.data)
 
-    def _index_images(self) -> None:
-        if not self.split_dir.exists():
-            raise FileNotFoundError(f"Split folder not found: {self.split_dir}")
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        row = self.data.iloc[idx]
+        sequence = str(row["sequence"])
+        label = int(row["label_idx"])
 
-        for class_name, class_idx in self.class_to_idx.items():
-            class_dir = self.split_dir / class_name
-            if not class_dir.exists():
-                raise FileNotFoundError(
-                    f"Expected class folder not found: {class_dir}\n"
-                    f"Expected classes: {list(self.class_to_idx.keys())}"
-                )
+        x = self.one_hot_encode(sequence)
+        if not self.for_cnn:
+            x = x.reshape(-1)
 
-            # Most common extensions in this dataset
-            exts = ["*.jpeg", "*.jpg", "*.png"]
-            for ext in exts:
-                for img_path in class_dir.glob(ext):
-                    self.samples.append((img_path, class_idx))
+        return x, torch.tensor(label, dtype=torch.long)
 
-        if len(self.samples) == 0:
-            raise RuntimeError(f"No images found in {self.split_dir}")
+    def normalize_sequence(self, sequence: str) -> str:
+        sequence = sequence.upper().replace("T", "U")
+        valid_bases = set(self.channels[:-1])
+        sequence = "".join(base if base in valid_bases else "N" for base in sequence)
+        return sequence[: self.max_length].ljust(self.max_length, "N")
 
-    def __len__(self):
-        return len(self.samples)
+    def one_hot_encode(self, sequence: str) -> torch.Tensor:
+        sequence = self.normalize_sequence(sequence)
+        base_to_channel = {"A": 0, "C": 1, "G": 2, "U": 3}
+        unknown_channel = 4
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        img_path, label = self.samples[idx]
-
-        # X-rays are grayscale
-        image = Image.open(img_path).convert("L")
-
-        if self.transform:
-            image = self.transform(image)
-
-        return image, label
+        x = torch.zeros((len(self.channels), self.max_length), dtype=torch.float32)
+        for position, base in enumerate(sequence):
+            channel = base_to_channel.get(base, unknown_channel)
+            x[channel, position] = 1.0
+        return x
 
 
 class HW4DataLoader:
-    def __init__(self):
+    def __init__(self, max_length: int = 500):
         self.homework_dir = Path(__file__).resolve().parent.parent
         self.data_dir = self.homework_dir / "data"
-        self.dataset_dir = self.data_dir / "chest_xray"
+        self.dataset_dir = self.data_dir
+        self.max_length = max_length
 
     def _check_dataset_exists(self) -> None:
         if not self.dataset_dir.exists():
             raise FileNotFoundError(
                 f"Expected dataset folder not found: {self.dataset_dir}\n"
-                "Make sure the data is placed in:\n"
-                "  homework4/data/chest_xray/\n"
+                "Make sure the RNA CSV files are placed in:\n"
+                "  homework4/data/\n"
             )
 
-    def _augment_data_fcn(self):
-        # FCN expects a flat vector
-        return T.Compose(
-            [
-                T.Resize((128, 128)),
-                T.ToTensor(),
-                T.Lambda(lambda x: x.view(-1)),
-            ]
-        )
-
-    def _augment_data_cnn(self):
-        # CNN expects (C,H,W)
-        return T.Compose(
-            [
-                T.Resize((128, 128)),
-                T.RandomHorizontalFlip(),
-                T.RandomRotation(10),
-                T.ToTensor(),
-                T.Normalize(mean=[0.5], std=[0.5]),
-            ]
-        )
-
-    def get_chest_xray_data(
+    def get_rna_data(
         self,
         split: str = "train",
         for_cnn: bool = True,
@@ -124,16 +118,31 @@ class HW4DataLoader:
         num_workers: int = 0,
     ) -> DataLoader:
         """
-        Load the Chest X-Ray dataset.
+        Load one RNA split.
+
+        Args:
+            split: One of train, val, or test.
+            for_cnn: If True, return tensors with shape (batch, 5, max_length).
+                If False, return flattened tensors with shape
+                (batch, 5 * max_length).
+            batch_size: Batch size for the DataLoader.
+            num_workers: Number of worker processes for loading data.
         """
         self._check_dataset_exists()
 
-        split_dir = self.dataset_dir / split
-        if not split_dir.exists():
-            raise FileNotFoundError(f"Expected split folder not found: {split_dir}")
+        split_to_filename = {
+            "train": "train.csv",
+            "val": "val.csv",
+            "test": "test.csv",
+        }
+        if split not in split_to_filename:
+            raise ValueError(f"split must be one of {sorted(split_to_filename)}")
 
-        transform = self._augment_data_cnn() if for_cnn else self._augment_data_fcn()
-        dataset = ChestXRayDataset(split_dir=split_dir, transform=transform)
+        dataset = RNADataset(
+            csv_path=self.dataset_dir / split_to_filename[split],
+            max_length=self.max_length,
+            for_cnn=for_cnn,
+        )
 
         return DataLoader(
             dataset,
@@ -141,3 +150,19 @@ class HW4DataLoader:
             shuffle=(split == "train"),
             num_workers=num_workers,
         )
+
+    def get_class_names(self) -> List[str]:
+        train_csv = self.dataset_dir / "train.csv"
+        train_dataset = RNADataset(train_csv, max_length=self.max_length)
+        return [
+            train_dataset.idx_to_label[idx]
+            for idx in sorted(train_dataset.idx_to_label)
+        ]
+
+    @property
+    def input_dim(self) -> int:
+        return len(RNADataset.channels) * self.max_length
+
+    @property
+    def num_classes(self) -> int:
+        return len(self.get_class_names())
