@@ -18,21 +18,13 @@ You will:
 ## Datasets
 
 You will work with one primary dataset:
-1. RNA Family Classification (Multiclass Classification)
+1. RNA Family Classification (5-Class Multiclass Classification)
 - **Sequences**: Non-coding RNA nucleotide sequences
-- **Labels**: RNA family labels such as `riboswitch`, `tRNA`, `miRNA`, and `5S_rRNA`
+- **Labels**: `5S_rRNA`, `tRNA`, `miRNA`, `riboswitch`, and `ribozyme`
 - **Task**: Predict the RNA family from the nucleotide sequence
 
 The dataset will be loaded using the provided `HW4DataLoader` class.
 It is split into separate CSV files for training, validation, and testing.
-
-```text
-data/
-├── train.csv
-├── val.csv
-└── test.csv
-```
-
 Each CSV contains:
 
 ```text
@@ -70,7 +62,7 @@ Install dependencies using pip:
 
 ---
 
-## Preprocessing and Augmentation
+## Preprocessing
 
 You will experiment with sequence preprocessing and encoding techniques:
 
